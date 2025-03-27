@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Logistics</title>
+    <link rel="stylesheet" href="./style.css">
+</head>
+
+<body>
+    <header>
+        <h1>Tableau de bord - Admin Logistics</h1>
+    </header>
+
+    <main>
+        <section>
+            <h2>Commandes reçues</h2>
+            <ul id="orderList"></ul>
+        </section>
+
+        <section>
+            <h2>Propositions envoyées</h2>
+            <ul id="proposalsList"></ul>
+        </section>
+
+        <section>
+            <h2>Devis acceptés</h2>
+            <ul id="acceptedOffer"></ul>
+        </section>
+    </main>
+
+    <script>
+        const socket = new WebSocket("ws://localhost:9000");
+
+        socket.onopen = () => {
+            console.log("Connexion WebSocket établie !");
+        };
+
+        socket.onmessage = event => {
+            console.log("Message reçu:", event.data);
+            const message = JSON.parse(event.data);
+
+            if (message.type === "order") {
+                console.log("Nouvelle commande reçue", message.data);
+                const orderList = document.getElementById("orderList");
+                const li = document.createElement("li");
+                li.textContent = `Produit: ${message.data.product}, Quantité: ${message.data.quantity}, Budget: ${message.data.budget}€`;
+                orderList.appendChild(li);
+            }
+
+            if (message.type === "proposal") {
+                console.log("proposal")
+                const proposalsList = document.getElementById("proposalsList");
+                const li = document.createElement("li");
+                li.textContent = `Entreprise: ${message.data.company}, Prix: ${message.data.price}€`;
+                proposalsList.appendChild(li);
+            }
+
+            if (message.type === "accept") {
+                console.log("accpeter")
+                const acceptedOffer = document.getElementById("acceptedOffer");
+                acceptedOffer.textContent = `Devis accepté : ${message.data.company} pour ${message.data.price}€`;
+            } else {
+                console.log("pas trouvé le type" + message.type)
+            }
+        };
+
+        // Fonction pour récupérer les derniers échanges depuis MongoDB
+        async function fetchExchanges() {
+            try {
+                const response = await fetch('/exchanges');
+                const exchanges = await response.json();
+                
+                // Séparer les commandes et propositions
+                exchanges.forEach(exchange => {
+                    const orderList = document.getElementById("orderList");
+                    const proposalsList = document.getElementById("proposalsList");
+                    const acceptedOfferList = document.getElementById("acceptedOffer");
+
+                    if (exchange.type === "order") {
+                        const li = document.createElement("li");
+                        li.textContent = `Produit: ${exchange.data.product}, Quantité: ${exchange.data.quantity}, Budget: ${exchange.data.budget}€`;
+                        orderList.appendChild(li);
+                    }
+                    
+                    if (exchange.type === "proposal") {
+                        const li = document.createElement("li");
+                        li.textContent = `Entreprise: ${exchange.data.company}, Prix: ${exchange.data.price}€`;
+                        proposalsList.appendChild(li);
+                    }
+                    if (exchange.type === "accept") {
+                        const li = document.createElement("li");
+                        li.textContent = `Devis accepté : ${exchange.data.company} pour ${exchange.data.price}€`;
+                        acceptedOfferList.appendChild(li);
+                    }
+                });
+            } catch (error) {
+                console.error('Erreur lors de la récupération des échanges:', error);
+            }
+        }
+
+        // Appel de la fonction pour récupérer les échanges au chargement de la page
+        window.onload = fetchExchanges;
+    </script>
+</body>
+
+</html>
