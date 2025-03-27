@@ -3,17 +3,21 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Plant Interface</title>
+    <title>Négociation</title>
+    <script defer src="script.js"></script>
 </head>
 <body>
-<h1>Suivi de la Production</h1>
+<h1>Interface de Négociation</h1>
 
-<p id="status">Statut: En attente</p>
-<p id="quantity">Quantité: 0</p>
+<div id="negotiation-container">
+    <p>Chargement des données...</p>
+</div>
 
-<button onclick="updateProduction('En cours', 100)">Démarrer Production</button>
-<button onclick="updateProduction('Terminé', 200)">Terminer Production</button>
-
-<script src="script.js"></script>
+<form id="negotiation-form" style="display: none;">
+    <label for="comment">Commentaire :</label>
+    <input type="text" id="comment" required>
+    <button type="button" id="accept">Accepter</button>
+    <button type="button" id="refuse">Refuser</button>
+</form>
 </body>
 </html>
