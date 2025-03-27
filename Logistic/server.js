@@ -2,10 +2,13 @@ const express = require('express');
 const mongoose = require('mongoose');
 const WebSocket = require("ws");
 const path = require('path');
+const axios = require("axios");
 
 const app = express();
 const port = process.env.PORT || 3001;
 const wsPort = 3002;
+
+const PLANTPATH = "http://localhost:3003";
 
 // Connexion à MongoDB
 mongoose.connect('mongodb://localhost/logistics', { useNewUrlParser: true, useUnifiedTopology: true })
@@ -97,3 +100,58 @@ function sendProposals(ws, order) {
         }, Math.random() * 3000 + 1000);
     });
 }
+
+// ############################ LOGISTIC - PLANT ########################## //
+
+app.use(express.json());
+
+let negotiationState = {
+    CDC: { produit: "Widget X", quantite: 100, delai: "5 jours" },
+    accept: null,
+    commentaire: ""
+};
+
+// Route pour simuler l’envoi d’une première proposition
+app.post("/start-negotiation", async (req, res) => {
+    console.log("📤 Envoi de la première proposition...");
+    try {
+        const response = await axios.post(PLANTPATH+"/proposition", negotiationState);
+        console.log("✅ Proposition envoyée :", response.data);
+        res.json({ message: "Proposition initiale envoyée", state: negotiationState });
+    } catch (error) {
+        console.error("❌ Erreur lors de l'envoi :", error.message);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+
+// Route pour recevoir les réponses de ton application
+app.post("/update-plant", async (req, res) => {
+    console.log("📩 Réponse reçue de l'application :", req.body);
+    negotiationState = req.body.negotiationState;
+
+    if (negotiationState.accept === false) {
+        console.log("🔄 Refus détecté, modification de la proposition...");
+
+        // Modifier le cahier des charges (ex: augmentation de la quantité)
+        negotiationState.CDC.quantite += 20;
+        negotiationState.CDC.delai = "15 jours";
+        negotiationState.accept = null;
+        negotiationState.commentaire = "Nouvelle proposition après refus";
+
+        // Attendre quelques secondes avant d'envoyer la nouvelle proposition
+        setTimeout(async () => {
+            console.log("📤 Envoi d'une nouvelle proposition après refus...");
+            try {
+                await axios.post(PLANTPATH+"/proposition", negotiationState);
+                console.log("✅ Nouvelle proposition envoyée !");
+            } catch (error) {
+                console.error("❌ Erreur lors de l'envoi de la nouvelle proposition :", error.message);
+            }
+        }, 3000); // Attente de 3 secondes
+    } else {
+        console.log("✅ Proposition acceptée, fin de la négociation.");
+    }
+
+    res.json({ message: "Réponse traitée", state: negotiationState });
+});

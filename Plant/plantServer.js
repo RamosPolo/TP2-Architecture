@@ -4,7 +4,7 @@ const PORT = process.env.PORT || 3003;
 const cors = require("cors");
 const axios = require("axios");
 
-const APIPATH = "http://localhost:3004";
+const APIPATH = "http://localhost:3001";
 
 // Middleware
 app.use(cors());
