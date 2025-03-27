@@ -1,10 +1,10 @@
 const express = require('express');
 const app = express();
-const PORT = process.env.PORT || 8081;
+const PORT = process.env.PORT || 3003;
 const cors = require("cors");
 const axios = require("axios");
 
-const APIPATH = "http://localhost:8000";
+const APIPATH = "http://localhost:3004";
 
 // Middleware
 app.use(cors());

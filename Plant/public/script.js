@@ -1,4 +1,4 @@
-const PLANTPATH = 'http://localhost:8081';
+const PLANTPATH = 'http://localhost:3003';
 
 document.addEventListener("DOMContentLoaded", () => {
     const negotiationContainer = document.getElementById("negotiation-container");

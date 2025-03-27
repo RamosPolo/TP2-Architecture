@@ -4,8 +4,8 @@ const WebSocket = require("ws");
 const path = require('path');
 
 const app = express();
-const port = process.env.PORT || 8000;
-const wsPort = 9000;
+const port = process.env.PORT || 3001;
+const wsPort = 3002;
 
 // Connexion à MongoDB
 mongoose.connect('mongodb://localhost/logistics', { useNewUrlParser: true, useUnifiedTopology: true })
