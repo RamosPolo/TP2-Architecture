@@ -8,18 +8,29 @@ document.addEventListener("DOMContentLoaded", () => {
     const refuseButton = document.getElementById("refuse");
 
     // Charger l’état de la négociation
+    // Charger toutes les propositions
     async function loadNegotiationState() {
         try {
-            const response = await fetch(PLANTPATH+"/proposition");
+            const response = await fetch(PLANTPATH + "/propositions");
             const data = await response.json();
 
-            if (data.negotiationState && data.negotiationState.CDC) {
+            console.log(data);
+
+            if (data.propositions && data.propositions.length > 0) {
+                const lastProposition = data.propositions[data.propositions.length - 1];
+
                 negotiationContainer.innerHTML = `
                     <h2>Nouvelle Proposition</h2>
-                    <p><strong>Cahier des charges :</strong> ${JSON.stringify(data.negotiationState.CDC)}</p>
-                    <p><strong>Status :</strong> ${data.negotiationState.status}</p>
+                    <p><strong>Cahier des charges :</strong> ${JSON.stringify(lastProposition.CDC)}</p>
+                    <p><strong>Status :</strong> ${lastProposition.status}</p>
                 `;
-                form.style.display = "block";
+
+                // Vérifie si le status de la dernière proposition est "En attente"
+                if (lastProposition.status === "En attente") {
+                    form.style.display = "block"; // Afficher le formulaire si la négociation est en attente
+                } else {
+                    form.style.display = "none"; // Masquer le formulaire si la négociation est terminée
+                }
             } else {
                 negotiationContainer.innerHTML = `<p>Aucune proposition en attente.</p>`;
                 form.style.display = "none";
@@ -30,6 +41,7 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     }
 
+
     // Envoyer une réponse à la négociation
     async function sendResponse(accept) {
         const commentaire = commentInput.value.trim();
@@ -38,11 +50,17 @@ document.addEventListener("DOMContentLoaded", () => {
             return;
         }
 
+        const negotiationState = {
+            accept,
+            commentaire,
+            status: accept ? "Accepté" : "Refusé" // Mettre à jour le statut
+        };
+
         try {
-            const response = await fetch(PLANTPATH+"/negociation", {
+            const response = await fetch(PLANTPATH + "/negociation", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ accept, commentaire })
+                body: JSON.stringify(negotiationState) // Envoi de l'objet avec accept, commentaire et status
             });
 
             const result = await response.json();

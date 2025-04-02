@@ -28,10 +28,15 @@
             <h2>Devis acceptés</h2>
             <ul id="acceptedOffer"></ul>
         </section>
+
+        <section>
+            <h2>Gestion des Devis</h2>
+            <ul id="devisList"></ul>
+        </section>
     </main>
 
     <script>
-        const socket = new WebSocket("ws://localhost:4000");
+        const socket = new WebSocket("ws://localhost:3002");
 
         socket.onopen = () => {
             console.log("Connexion WebSocket établie !");
@@ -50,7 +55,7 @@
             }
 
             if (message.type === "proposal") {
-                console.log("proposal")
+                console.log("proposal" + message.data);
                 const proposalsList = document.getElementById("proposalsList");
                 const li = document.createElement("li");
                 li.textContent = `Entreprise: ${message.data.company}, Prix: ${message.data.price}€`;
@@ -80,13 +85,25 @@
 
                     if (exchange.type === "order") {
                         const li = document.createElement("li");
+                        li.className = "order";
+                        const button = document.createElement("button");
                         li.textContent = `Produit: ${exchange.data.product}, Quantité: ${exchange.data.quantity}, Budget: ${exchange.data.budget}€`;
+                        li.appendChild(button);
+                        button.onclick = () => {
+                            sendToSupplier(exchange.data);
+                        };
+                        button.textContent = "Envoyer au fournisseur";
                         orderList.appendChild(li);
                     }
                     
                     if (exchange.type === "proposal") {
+
+                        let dataPro = exchange.data.CDC;
+
+                        console.log("dataPro", dataPro.produit);
+
                         const li = document.createElement("li");
-                        li.textContent = `Entreprise: ${exchange.data.company}, Prix: ${exchange.data.price}€`;
+                        li.textContent = `🏢 Entreprise A: 📦 Produit: ${dataPro.produit}, ⏳ Délai: ${dataPro.delai}, 💰 Prix: ${dataPro.price}€`;
                         proposalsList.appendChild(li);
                     }
                     if (exchange.type === "accept") {
@@ -99,6 +116,32 @@
                 console.error('Erreur lors de la récupération des échanges:', error);
             }
         }
+
+        function sendToSupplier(order) {
+            let negotiationState = {
+                CDC: { produit: order.product, quantite: order.quantity, delai: "5 jours" },
+                accept: null, // Acceptation initiale
+                commentaire: "", // Commentaire initial vide
+                status: "En attente" // Statut initial
+            };
+
+            // Envoi de la requête avec negotiationState
+            fetch('/start-negotiation', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(negotiationState)
+            })
+            .then(response => response.json())
+            .then(data => {
+                console.log("Négociation commencée:", data);
+                const proposalsList = document.getElementById("proposalsList");
+                const li = document.createElement("li");
+                li.textContent = `Devis en cours: Produit ${order.product}, Quantité ${order.quantity}`;
+                proposalsList.appendChild(li);
+            })
+            .catch(error => console.error("Erreur d'envoi au fournisseur:", error));
+        }
+
 
         // Appel de la fonction pour récupérer les échanges au chargement de la page
         window.onload = fetchExchanges;

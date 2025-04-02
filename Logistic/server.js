@@ -58,7 +58,6 @@ server.on("connection", (ws) => {
 
         if (data.type === "order") {
             console.log("Nouvelle commande reçue", data.data);
-            sendProposals(ws, data.data);
         } else if (data.type === "accept") {
             console.log(`Commande acceptée pour ${data.data.company} au prix de ${data.data.price}€`);
             ws.send(JSON.stringify({ type: "confirmation", data: data.data }));
@@ -68,24 +67,14 @@ server.on("connection", (ws) => {
     ws.on("close", () => console.log("Client déconnecté"));
 });
 
-app.get('/exchanges', async (req, res) => {
-    try {
-        // Récupère les 10 derniers échanges, triés par timestamp (du plus récent au plus ancien)
-        const exchanges = await Exchange.find().sort({ timestamp: -1 }).limit(10);
-        res.json(exchanges);
-    } catch (err) {
-        res.status(500).send('Erreur lors de la récupération des échanges');
-    }
-});
-
-
 function sendProposals(ws, order) {
     const companies = ["Entreprise A", "Entreprise B", "Entreprise C"];
 
     companies.forEach((company) => {
         setTimeout(() => {
             const price = (Math.random() * (order.budget - order.budget * 0.5) + order.budget * 0.5).toFixed(2);
-            const proposal = { company, price };
+            const quantity = order.quantity;
+            const proposal = { company, price, quantity };
             ws.send(JSON.stringify({ type: "proposal", data: proposal }));
 
             // Sauvegarde de la proposition dans MongoDB
@@ -105,24 +94,44 @@ function sendProposals(ws, order) {
 
 app.use(express.json());
 
-let negotiationState = {
-    CDC: { produit: "Widget X", quantite: 100, delai: "5 jours" },
-    accept: null,
-    commentaire: ""
-};
+app.get('/exchanges', async (req, res) => {
+    try {
+        const exchanges = await Exchange.find().sort({ timestamp: -1 }).limit(10);
+        console.log("🔍 Données récupérées depuis MongoDB :", exchanges);
+        res.json(exchanges);
+    } catch (err) {
+        res.status(500).send('Erreur lors de la récupération des échanges');
+    }
+});
+
+
 
 // Route pour simuler l’envoi d’une première proposition
 app.post("/start-negotiation", async (req, res) => {
     console.log("📤 Envoi de la première proposition...");
+    console.log(req.body); // Vérifier ce qui est envoyé
+
     try {
-        const response = await axios.post(PLANTPATH+"/proposition", negotiationState);
+        const response = await axios.post(PLANTPATH + "/proposition", req.body); // Envoi de la proposition
         console.log("✅ Proposition envoyée :", response.data);
-        res.json({ message: "Proposition initiale envoyée", state: negotiationState });
+
+        // Sauvegarde de la négociation initiale dans MongoDB
+        const proposalExchange = new Exchange({
+            type: "proposal",
+            data: req.body
+        });
+
+        await proposalExchange.save();
+        console.log("💾 Proposition initiale sauvegardée dans MongoDB");
+
+        res.json({ message: "Proposition initiale envoyée et enregistrée", state: req.body });
     } catch (error) {
         console.error("❌ Erreur lors de l'envoi :", error.message);
         res.status(500).json({ error: error.message });
     }
 });
+
+
 
 
 // Route pour recevoir les réponses de ton application
