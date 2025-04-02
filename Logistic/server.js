@@ -67,28 +67,6 @@ server.on("connection", (ws) => {
     ws.on("close", () => console.log("Client déconnecté"));
 });
 
-function sendProposals(ws, order) {
-    const companies = ["Entreprise A", "Entreprise B", "Entreprise C"];
-
-    companies.forEach((company) => {
-        setTimeout(() => {
-            const price = (Math.random() * (order.budget - order.budget * 0.5) + order.budget * 0.5).toFixed(2);
-            const quantity = order.quantity;
-            const proposal = { company, price, quantity };
-            ws.send(JSON.stringify({ type: "proposal", data: proposal }));
-
-            // Sauvegarde de la proposition dans MongoDB
-            const proposalExchange = new Exchange({
-                type: "proposal",
-                data: proposal
-            });
-
-            proposalExchange.save()
-                .then(() => console.log('Proposition sauvegardée dans MongoDB'))
-                .catch((err) => console.log('Erreur lors de la sauvegarde:', err));
-        }, Math.random() * 3000 + 1000);
-    });
-}
 
 // ############################ LOGISTIC - PLANT ########################## //
 
@@ -132,35 +110,56 @@ app.post("/start-negotiation", async (req, res) => {
 });
 
 
-
-
-// Route pour recevoir les réponses de ton application
+// Route pour recevoir les réponses de l'application
 app.post("/update-plant", async (req, res) => {
     console.log("📩 Réponse reçue de l'application :", req.body);
-    negotiationState = req.body.negotiationState;
+    let negotiationState = req.body.negotiationState;
 
-    if (negotiationState.accept === false) {
-        console.log("🔄 Refus détecté, modification de la proposition...");
+    try {
+        // Sauvegarde de la négociation dans MongoDB
+        const negotiationExchange = new Exchange({
+            type: "negotiation",
+            data: negotiationState
+        });
 
-        // Modifier le cahier des charges (ex: augmentation de la quantité)
-        negotiationState.CDC.quantite += 20;
-        negotiationState.CDC.delai = "15 jours";
-        negotiationState.accept = null;
-        negotiationState.commentaire = "Nouvelle proposition après refus";
+        await negotiationExchange.save();
+        console.log("✅ Négociation sauvegardée dans MongoDB");
 
-        // Attendre quelques secondes avant d'envoyer la nouvelle proposition
-        setTimeout(async () => {
-            console.log("📤 Envoi d'une nouvelle proposition après refus...");
-            try {
-                await axios.post(PLANTPATH+"/proposition", negotiationState);
-                console.log("✅ Nouvelle proposition envoyée !");
-            } catch (error) {
-                console.error("❌ Erreur lors de l'envoi de la nouvelle proposition :", error.message);
-            }
-        }, 3000); // Attente de 3 secondes
-    } else {
-        console.log("✅ Proposition acceptée, fin de la négociation.");
+        if (negotiationState.accept === false) {
+            console.log("🔄 Refus détecté, modification de la proposition...");
+
+            // Modifier le cahier des charges (ex: augmentation de la quantité)
+            negotiationState.CDC.quantite += 20;
+            negotiationState.CDC.delai = "15 jours";
+            negotiationState.accept = null;
+            negotiationState.commentaire = "Nouvelle proposition après refus";
+
+            // Suppression des commandes et étapes associées après refus
+            await Exchange.deleteMany({ type: { $in: ["order", "proposal"] } });
+            console.log("🗑️ Commandes et propositions supprimées après refus");
+
+            // Attendre quelques secondes avant d'envoyer la nouvelle proposition
+            setTimeout(async () => {
+                console.log("📤 Envoi d'une nouvelle proposition après refus...");
+                try {
+                    await axios.post(PLANTPATH + "/proposition", negotiationState);
+                    console.log("✅ Nouvelle proposition envoyée !");
+                } catch (error) {
+                    console.error("❌ Erreur lors de l'envoi de la nouvelle proposition :", error.message);
+                }
+            }, 3000);
+        } else {
+            console.log("✅ Proposition acceptée, fin de la négociation.");
+
+            // Suppression des commandes et étapes associées après acceptation
+            await Exchange.deleteMany({ type: { $in: ["order", "proposal"] } });
+            console.log("🗑️ Commandes et propositions supprimées après acceptation");
+        }
+
+        res.json({ message: "Réponse traitée et sauvegardée", state: negotiationState });
+    } catch (error) {
+        console.error("❌ Erreur lors du traitement de la négociation :", error.message);
+        res.status(500).json({ error: "Impossible de traiter la négociation" });
     }
-
-    res.json({ message: "Réponse traitée", state: negotiationState });
 });
+

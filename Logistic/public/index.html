@@ -25,14 +25,15 @@
         </section>
 
         <section>
-            <h2>Devis acceptés</h2>
-            <ul id="acceptedOffer"></ul>
+            <h2>Négociation Devis</h2>
+            <ul id="negotiationList"></ul>
         </section>
 
         <section>
-            <h2>Gestion des Devis</h2>
-            <ul id="devisList"></ul>
+            <h2>Devis acceptés</h2>
+            <ul id="acceptedOffer"></ul>
         </section>
+        
     </main>
 
     <script>
@@ -81,6 +82,8 @@
                 exchanges.forEach(exchange => {
                     const orderList = document.getElementById("orderList");
                     const proposalsList = document.getElementById("proposalsList");
+                    const negotiationList = document.getElementById("negotiationList");
+
                     const acceptedOfferList = document.getElementById("acceptedOffer");
 
                     if (exchange.type === "order") {
@@ -94,22 +97,23 @@
                         };
                         button.textContent = "Envoyer au fournisseur";
                         orderList.appendChild(li);
-                    }
-                    
-                    if (exchange.type === "proposal") {
+                    }else if(exchange.type === "proposal") {
 
                         let dataPro = exchange.data.CDC;
-
-                        console.log("dataPro", dataPro.produit);
-
+                        console.log("dataPro" + dataPro);
                         const li = document.createElement("li");
-                        li.textContent = `🏢 Entreprise A: 📦 Produit: ${dataPro.produit}, ⏳ Délai: ${dataPro.delai}, 💰 Prix: ${dataPro.price}€`;
+                        li.textContent = `🏢 Entreprise A: 📦 Produit: ${dataPro.product}, ⏳ Délai: ${dataPro.delai}, 💰 Prix: ${dataPro.budget}€`;
                         proposalsList.appendChild(li);
-                    }
-                    if (exchange.type === "accept") {
+                    }else if(exchange.type == "negotiation") {
+                        let dataPro = exchange.data.CDC;
                         const li = document.createElement("li");
-                        li.textContent = `Devis accepté : ${exchange.data.company} pour ${exchange.data.price}€`;
-                        acceptedOfferList.appendChild(li);
+                        li.textContent = `🏢 Entreprise A: 📦 Produit: ${dataPro.product}, ⏳ Délai: ${dataPro.delai}, 💰 Prix: ${dataPro.budget}€`;
+                            
+                        if(exchange.data.status == "Refusé"){
+                            negotiationList.appendChild(li);
+                        } else {
+                            acceptedOfferList.appendChild(li);
+                        }
                     }
                 });
             } catch (error) {
@@ -119,7 +123,7 @@
 
         function sendToSupplier(order) {
             let negotiationState = {
-                CDC: { produit: order.product, quantite: order.quantity, delai: "5 jours" },
+                CDC: { product: order.product, quantity: order.quantity, delai: "5 jours", budget: order.budget }, // Détails de la commande
                 accept: null, // Acceptation initiale
                 commentaire: "", // Commentaire initial vide
                 status: "En attente" // Statut initial
