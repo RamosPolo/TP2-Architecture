@@ -25,7 +25,7 @@
         </section>
 
         <section>
-            <h2>Négociation Devis</h2>
+            <h2>Négociation Devis avec client</h2>
             <ul id="negotiationList"></ul>
         </section>
 
@@ -124,9 +124,9 @@
         function sendToSupplier(order) {
             let negotiationState = {
                 CDC: { product: order.product, quantity: order.quantity, delai: "5 jours", budget: order.budget }, // Détails de la commande
-                accept: null, // Acceptation initiale
-                commentaire: "", // Commentaire initial vide
-                status: "En attente" // Statut initial
+                accept: null, 
+                commentaire: "", 
+                status: "En attente"
             };
 
             // Envoi de la requête avec negotiationState

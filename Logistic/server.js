@@ -10,6 +10,9 @@ const wsPort = 3002;
 
 const PLANTPATH = "http://localhost:3003";
 
+let connectedClient = null;
+
+
 // Connexion à MongoDB
 mongoose.connect('mongodb://localhost/logistics', { useNewUrlParser: true, useUnifiedTopology: true })
     .then(() => console.log('Connexion MongoDB réussie'))
@@ -43,10 +46,14 @@ console.log(`WebSocket server listening on ws://localhost:${wsPort}`);
 server.on("connection", (ws) => {
     console.log("Client connecté");
 
+    connectedClient = ws; 
+
+
     ws.on("message", (message) => {
         const data = JSON.parse(message);
 
         // Sauvegarde de l'échange dans MongoDB
+        console.log("Message type:", data.type);
         const exchange = new Exchange({
             type: data.type,
             data: data.data
@@ -82,14 +89,14 @@ app.get('/exchanges', async (req, res) => {
     }
 });
 
-
-
-// Route pour simuler l’envoi d’une première proposition
 app.post("/start-negotiation", async (req, res) => {
     console.log("📤 Envoi de la première proposition...");
-    console.log(req.body); // Vérifier ce qui est envoyé
 
     try {
+        // Supprimer les commandes et propositions précédentes
+        await Exchange.deleteMany({ type: { $in: ["order", "proposal"] } });
+        console.log("🗑️ Anciennes commandes et propositions supprimées avant l'envoi");
+
         const response = await axios.post(PLANTPATH + "/proposition", req.body); // Envoi de la proposition
         console.log("✅ Proposition envoyée :", response.data);
 
@@ -108,6 +115,7 @@ app.post("/start-negotiation", async (req, res) => {
         res.status(500).json({ error: error.message });
     }
 });
+
 
 
 // Route pour recevoir les réponses de l'application
@@ -138,16 +146,34 @@ app.post("/update-plant", async (req, res) => {
             await Exchange.deleteMany({ type: { $in: ["order", "proposal"] } });
             console.log("🗑️ Commandes et propositions supprimées après refus");
 
+            if (connectedClient && connectedClient.readyState === WebSocket.OPEN) {
+                connectedClient.send(JSON.stringify({
+                    type: "proposal",
+                    data: {
+                        company: "Logistics",
+                        price: negotiationState.CDC.budget,
+                        quantity: negotiationState.CDC.quantite,
+                        delai: negotiationState.CDC.delai,
+                        commentaire: negotiationState.commentaire
+                    }
+                }));
+                console.log("✅ Proposition envoyée au client WebSocket");
+            } else {
+                console.error("❌ Aucun client WebSocket connecté ou socket fermé.");
+            }
+            
+
+            
             // Attendre quelques secondes avant d'envoyer la nouvelle proposition
-            setTimeout(async () => {
-                console.log("📤 Envoi d'une nouvelle proposition après refus...");
-                try {
-                    await axios.post(PLANTPATH + "/proposition", negotiationState);
-                    console.log("✅ Nouvelle proposition envoyée !");
-                } catch (error) {
-                    console.error("❌ Erreur lors de l'envoi de la nouvelle proposition :", error.message);
-                }
-            }, 3000);
+            // setTimeout(async () => {
+            //     console.log("📤 Envoi d'une nouvelle proposition après refus...");
+            //     try {
+            //         await axios.post(PLANTPATH + "/proposition", negotiationState);
+            //         console.log("✅ Nouvelle proposition envoyée !");
+            //     } catch (error) {
+            //         console.error("❌ Erreur lors de l'envoi de la nouvelle proposition :", error.message);
+            //     }
+            // }, 3000);
         } else {
             console.log("✅ Proposition acceptée, fin de la négociation.");
 

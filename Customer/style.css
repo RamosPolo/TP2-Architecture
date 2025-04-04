@@ -1,0 +1,104 @@
+/* Style général */
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: #f5f7fa;
+    margin: 0;
+    padding: 20px;
+    color: #333;
+}
+
+/* Titres */
+h1, h2 {
+    color: #2c3e50;
+    text-align: center;
+}
+
+/* Formulaire */
+form {
+    background: white;
+    max-width: 500px;
+    margin: 20px auto;
+    padding: 30px;
+    border-radius: 12px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+label {
+    display: block;
+    margin-top: 15px;
+    font-weight: 600;
+}
+
+input[type="text"],
+input[type="number"] {
+    width: 100%;
+    padding: 10px;
+    margin-top: 5px;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    box-sizing: border-box;
+    font-size: 16px;
+}
+
+/* Bouton d'envoi */
+button[type="submit"] {
+    margin-top: 20px;
+    background-color: #3498db;
+    color: white;
+    border: none;
+    padding: 12px 20px;
+    border-radius: 8px;
+    cursor: pointer;
+    width: 100%;
+    font-size: 16px;
+    transition: background 0.3s;
+}
+
+button[type="submit"]:hover {
+    background-color: #2980b9;
+}
+
+/* Propositions */
+#proposals {
+    max-width: 600px;
+    margin: 30px auto;
+    padding: 0;
+    list-style-type: none;
+}
+
+#proposals li {
+    background: white;
+    margin: 10px 0;
+    padding: 15px 20px;
+    border-radius: 10px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+/* Bouton d'acceptation */
+#proposals button {
+    background-color: #2ecc71;
+    border: none;
+    color: white;
+    padding: 8px 14px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.3s;
+}
+
+#proposals button:hover {
+    background-color: #27ae60;
+}
+
+/* Devis accepté */
+#acceptedOffer {
+    max-width: 600px;
+    margin: 20px auto;
+    background-color: #ecf0f1;
+    padding: 15px;
+    border-left: 6px solid #27ae60;
+    border-radius: 8px;
+    font-weight: bold;
+}
