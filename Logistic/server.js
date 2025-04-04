@@ -10,7 +10,8 @@ const wsPort = 3002;
 
 const PLANTPATH = "http://localhost:3003";
 
-let connectedClient = null;
+let clientsCon = [];
+
 
 
 // Connexion à MongoDB
@@ -44,16 +45,11 @@ const server = new WebSocket.Server({ port: wsPort });
 console.log(`WebSocket server listening on ws://localhost:${wsPort}`);
 
 server.on("connection", (ws) => {
-    console.log("Client connecté");
-
-    connectedClient = ws; 
-
+    clientsCon.push(ws);
 
     ws.on("message", (message) => {
         const data = JSON.parse(message);
 
-        // Sauvegarde de l'échange dans MongoDB
-        console.log("Message type:", data.type);
         const exchange = new Exchange({
             type: data.type,
             data: data.data
@@ -65,14 +61,24 @@ server.on("connection", (ws) => {
 
         if (data.type === "order") {
             console.log("Nouvelle commande reçue", data.data);
+
         } else if (data.type === "accept") {
             console.log(`Commande acceptée pour ${data.data.company} au prix de ${data.data.price}€`);
             ws.send(JSON.stringify({ type: "confirmation", data: data.data }));
         }
     });
 
-    ws.on("close", () => console.log("Client déconnecté"));
+    ws.on("close", () => {
+        console.log("Client déconnecté");
+        // On réinitialise la variable pour éviter d'envoyer un message à un client non connecté
+    });
+
+    ws.on("error", (error) => {
+        console.error("Erreur WebSocket:", error);
+        // On réinitialise également en cas d'erreur
+    });
 });
+
 
 
 // ############################ LOGISTIC - PLANT ########################## //
@@ -146,23 +152,22 @@ app.post("/update-plant", async (req, res) => {
             await Exchange.deleteMany({ type: { $in: ["order", "proposal"] } });
             console.log("🗑️ Commandes et propositions supprimées après refus");
 
-            if (connectedClient && connectedClient.readyState === WebSocket.OPEN) {
-                connectedClient.send(JSON.stringify({
-                    type: "proposal",
-                    data: {
-                        company: "Logistics",
-                        price: negotiationState.CDC.budget,
-                        quantity: negotiationState.CDC.quantite,
-                        delai: negotiationState.CDC.delai,
-                        commentaire: negotiationState.commentaire
-                    }
-                }));
-                console.log("✅ Proposition envoyée au client WebSocket");
-            } else {
-                console.error("❌ Aucun client WebSocket connecté ou socket fermé.");
-            }
-            
-
+            clientsCon.forEach(client => {
+                if (client.readyState === WebSocket.OPEN) {
+                    client.send(JSON.stringify({
+                        type: "proposal",
+                        data: {
+                            company: "Logistics",
+                            price: negotiationState.CDC.budget,
+                            quantity: negotiationState.CDC.quantite,
+                            delai: negotiationState.CDC.delai,
+                            commentaire: negotiationState.commentaire
+                        }
+                    }));
+                } else {
+                    console.error("❌ Client non connecté, impossible d'envoyer la proposition");
+                }
+              });
             
             // Attendre quelques secondes avant d'envoyer la nouvelle proposition
             // setTimeout(async () => {
@@ -188,4 +193,3 @@ app.post("/update-plant", async (req, res) => {
         res.status(500).json({ error: "Impossible de traiter la négociation" });
     }
 });
-

@@ -19,18 +19,24 @@ const socket = new WebSocket("ws://localhost:3002");
             if (message.type === "proposal") {
                 const li = document.createElement("li");
                 li.textContent = `Entreprise : ${message.data.company}, Prix : ${message.data.price}€`;
+                
                 const acceptBtn = document.createElement("button");
+                const refuseBtn = document.createElement("button");
+
+                const div = document.createElement("div");
+
                 acceptBtn.textContent = "Accepter";
                 acceptBtn.onclick = () => {
-                    socket.send(JSON.stringify({ type: "accept", data: message.data }));
-                    acceptedOffer.textContent = `Devis accepté : ${message.data.company} pour ${message.data.price}€`;
-                    const propositions = document.getElementById("proposals");
-                    // Supprimer l'élément correspondant
-                    propositions.forEach((li) => {
-                        li.remove();
-                    });
+                    socket.send(JSON.stringify({ type: "accept", data: message.data }));                    
                 };
-                li.appendChild(acceptBtn);
+
+                refuseBtn.textContent = "refuser";
+                refuseBtn.onclick = () => {
+                    socket.send(JSON.stringify({ type: "refuse", data: message.data }));                    
+                };
+                div.appendChild(refuseBtn);
+                div.appendChild(acceptBtn);
+                li.appendChild(div);
                 proposalsList.appendChild(li);
             }
         };
