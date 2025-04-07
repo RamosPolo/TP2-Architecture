@@ -8,7 +8,16 @@ const app = express();
 const port = process.env.PORT || 3001;
 const wsPort = 3002;
 
+// ERREURS CORS
+const cors = require("cors");
+app.use(cors({
+    origin: "http://localhost:3003",
+    methods: ["GET", "POST", "PUT", "DELETE"],
+    allowedHeaders: ["Content-Type"]
+}));
+
 const PLANTPATH = "http://localhost:3003";
+const TRANSPORTPATH = "http://localhost:3004";
 
 let clientsCon = [];
 
@@ -27,6 +36,7 @@ const exchangeSchema = new mongoose.Schema({
 });
 
 const Exchange = mongoose.model('Exchange', exchangeSchema);
+const ExhangeTransport = mongoose.model('ExchangeTransport', exchangeSchema);
 
 // Serveur HTTP Express pour servir index.html
 app.use(express.static(path.join(__dirname, 'public')));
@@ -192,4 +202,60 @@ app.post("/update-plant", async (req, res) => {
         console.error("❌ Erreur lors du traitement de la négociation :", error.message);
         res.status(500).json({ error: "Impossible de traiter la négociation" });
     }
+});
+
+
+// ########################### TRANSPORTER ####################### //
+
+app.use(express.json());
+
+// Mémoire locale
+let logs = [];
+
+// Envoie d'une proposition initiale
+app.post("/start-negotiation-transporter", async (req, res) => {
+    console.log("📤 Envoi de la proposition initiale à Transporter...");
+
+    try {
+        const response = await axios.post(`${TRANSPORTPATH}/proposition`, req.body);
+        console.log("✅ Proposition envoyée :", response.data.proposition);
+
+        logs.push({ type: "proposition", data: req.body });
+
+        res.json({ message: "Proposition envoyée à Transporter", state: req.body });
+    } catch (error) {
+        console.error("❌ Erreur lors de l'envoi :", error.message);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Réception de la réponse de Transporter
+app.post("/update-transporter", (req, res) => {
+    const negotiationState = req.body.negotiationState;
+    console.log("📩 Réponse reçue de Transporter :", negotiationState);
+
+    logs.push({ type: "negotiation", data: negotiationState });
+
+    if (negotiationState.accept === false) {
+        console.log("🔄 Proposition refusée. Préparation d'une nouvelle proposition...");
+
+        negotiationState.CDC.quantite += 20;
+        negotiationState.CDC.delai = "15 jours";
+        negotiationState.accept = null;
+        negotiationState.commentaire = "Nouvelle proposition après refus";
+
+        // Réenvoi d'une nouvelle proposition
+        setTimeout(async () => {
+            try {
+                await axios.post(`${TRANSPORTPATH}/proposition`, negotiationState);
+                console.log("📤 Nouvelle proposition envoyée après refus.");
+            } catch (err) {
+                console.error("❌ Erreur lors du renvoi :", err.message);
+            }
+        }, 1000);
+    } else {
+        console.log("✅ Proposition acceptée. Fin de la négociation.");
+    }
+
+    res.json({ message: "Réponse traitée", state: negotiationState });
 });
