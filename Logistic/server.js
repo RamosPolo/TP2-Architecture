@@ -47,8 +47,9 @@ console.log(`WebSocket server listening on ws://localhost:${wsPort}`);
 server.on("connection", (ws) => {
     clientsCon.push(ws);
 
-    ws.on("message", (message) => {
+    ws.on("message", async (message) => {
         const data = JSON.parse(message);
+
 
         const exchange = new Exchange({
             type: data.type,
@@ -62,9 +63,37 @@ server.on("connection", (ws) => {
         if (data.type === "order") {
             console.log("Nouvelle commande reçue", data.data);
 
+        } else if (data.type === "refuse") {
+            console.log(`Commande refusé par le client pour ${data.data.company} au prix de ${data.data.price}€`);
+
         } else if (data.type === "accept") {
             console.log(`Commande acceptée pour ${data.data.company} au prix de ${data.data.price}€`);
             ws.send(JSON.stringify({ type: "confirmation", data: data.data }));
+
+        } else if (data.type === "negociate") {
+            console.log(`Négociation pour ${data.data.company} au prix de ${data.data.price}€`);
+            console.log("Détails de la commande :", data.data);
+            let negotiationState = {
+                CDC: { product: data.data.product, quantity: data.data.quantity, delai: "5 jours", budget: data.data.budget }, // Détails de la commande
+                accept: null, 
+                commentaire: "", 
+                status: "En attente"
+            };
+
+            try {
+                // Envoi de la nouvelle proposition à l'application
+                const response = await axios.post(PLANTPATH + "/proposition", negotiationState);
+                console.log("✅ Proposition envoyée :", response.data);
+                // Sauvegarde de la négociation dans MongoDB
+                const negotiationExchange = new Exchange({
+                    type: "negotiation",
+                    data: negotiationState
+                });
+                await negotiationExchange.save();
+                console.log("✅ Nouvelle proposition envoyée !");
+            } catch (error) {
+                console.error("❌ Erreur lors de l'envoi de la nouvelle proposition :", error.message);
+            }
         }
     });
 
@@ -88,7 +117,6 @@ app.use(express.json());
 app.get('/exchanges', async (req, res) => {
     try {
         const exchanges = await Exchange.find().sort({ timestamp: -1 }).limit(10);
-        console.log("🔍 Données récupérées depuis MongoDB :", exchanges);
         res.json(exchanges);
     } catch (err) {
         res.status(500).send('Erreur lors de la récupération des échanges');
@@ -142,20 +170,38 @@ app.post("/update-plant", async (req, res) => {
         if (negotiationState.accept === false) {
             console.log("🔄 Refus détecté, modification de la proposition...");
 
-            // Modifier le cahier des charges (ex: augmentation de la quantité)
-            negotiationState.CDC.quantite += 20;
-            negotiationState.CDC.delai = "15 jours";
-            negotiationState.accept = null;
+            // Modifier le cahier des charges
             negotiationState.commentaire = "Nouvelle proposition après refus";
 
             // Suppression des commandes et étapes associées après refus
             await Exchange.deleteMany({ type: { $in: ["order", "proposal"] } });
             console.log("🗑️ Commandes et propositions supprimées après refus");
 
+            // Envoi de la nouvelle proposition aux clients connectés
             clientsCon.forEach(client => {
                 if (client.readyState === WebSocket.OPEN) {
                     client.send(JSON.stringify({
                         type: "proposal",
+                        data: {
+                            company: "Logistics",
+                            product: negotiationState.CDC.product,
+                            price: negotiationState.CDC.budget,
+                            quantity: negotiationState.CDC.quantite,
+                            delai: negotiationState.CDC.delai,
+                            commentaire: negotiationState.commentaire
+                        }
+                    }));
+                } else {
+                    console.error("❌ Client non connecté, impossible d'envoyer la proposition");
+                }
+              });
+        } else {
+            console.log("✅ Proposition acceptée, fin de la négociation.");
+
+            clientsCon.forEach(client => {
+                if (client.readyState === WebSocket.OPEN) {
+                    client.send(JSON.stringify({
+                        type: "confirmation",
                         data: {
                             company: "Logistics",
                             price: negotiationState.CDC.budget,
@@ -168,19 +214,6 @@ app.post("/update-plant", async (req, res) => {
                     console.error("❌ Client non connecté, impossible d'envoyer la proposition");
                 }
               });
-            
-            // Attendre quelques secondes avant d'envoyer la nouvelle proposition
-            // setTimeout(async () => {
-            //     console.log("📤 Envoi d'une nouvelle proposition après refus...");
-            //     try {
-            //         await axios.post(PLANTPATH + "/proposition", negotiationState);
-            //         console.log("✅ Nouvelle proposition envoyée !");
-            //     } catch (error) {
-            //         console.error("❌ Erreur lors de l'envoi de la nouvelle proposition :", error.message);
-            //     }
-            // }, 3000);
-        } else {
-            console.log("✅ Proposition acceptée, fin de la négociation.");
 
             // Suppression des commandes et étapes associées après acceptation
             await Exchange.deleteMany({ type: { $in: ["order", "proposal"] } });

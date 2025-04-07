@@ -81,6 +81,7 @@ app.post("/negociation", async (req, res) => {
         // Informer l'API externe (ex: service logistique)
         await axios.post(`http://localhost:${PORT_LOGISTIC}/update-plant`, { negotiationState });
         res.json({ message: "Réponse envoyée à la logistique", negotiationState });
+
     } catch (err) {
         console.error("Erreur lors de la mise à jour de la négociation:", err.message);
         res.status(500).json({ error: "Impossible de mettre à jour la négociation" });

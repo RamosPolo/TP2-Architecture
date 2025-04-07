@@ -22,6 +22,7 @@ const socket = new WebSocket("ws://localhost:3002");
                 
                 const acceptBtn = document.createElement("button");
                 const refuseBtn = document.createElement("button");
+                const negociationBtn = document.createElement("button");
 
                 const div = document.createElement("div");
 
@@ -34,9 +35,23 @@ const socket = new WebSocket("ws://localhost:3002");
                 refuseBtn.onclick = () => {
                     socket.send(JSON.stringify({ type: "refuse", data: message.data }));                    
                 };
+
+                negociationBtn.textContent = "Négocier";
+                negociationBtn.onclick = () => {
+                    const newPrice = prompt("Proposez un nouveau prix :");
+                    if (newPrice) {
+                        socket.send(JSON.stringify({ type: "negociate", data: { ...message.data, price: newPrice } }));
+                    }
+                };
+                
+                div.appendChild(negociationBtn);
                 div.appendChild(refuseBtn);
                 div.appendChild(acceptBtn);
                 li.appendChild(div);
                 proposalsList.appendChild(li);
+            } else if (message.type === "confirmation") {
+                const li = document.createElement("li");
+                li.textContent = `Commande ${message.data.company} acceptée au prix de ${message.data.price}€`;
+                acceptedOffer.appendChild(li);
             }
         };
