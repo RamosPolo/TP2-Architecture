@@ -277,3 +277,59 @@ function notifyClients(clientsCon, propositions, type) {
         });
     });
 }
+
+// ########################### TRANSPORTER ####################### //
+
+app.use(express.json());
+
+// Mémoire locale
+let logs = [];
+
+// Envoie d'une proposition initiale
+app.post("/start-negotiation-transporter", async (req, res) => {
+    console.log("📤 Envoi de la proposition initiale à Transporter...");
+
+    try {
+        const response = await axios.post(`${TRANSPORTPATH}/proposition`, req.body);
+        console.log("✅ Proposition envoyée :", response.data.proposition);
+
+        logs.push({ type: "proposition", data: req.body });
+
+        res.json({ message: "Proposition envoyée à Transporter", state: req.body });
+    } catch (error) {
+        console.error("❌ Erreur lors de l'envoi :", error.message);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Réception de la réponse de Transporter
+app.post("/update-transporter", (req, res) => {
+    const negotiationState = req.body.negotiationState;
+    console.log("📩 Réponse reçue de Transporter :", negotiationState);
+
+    logs.push({ type: "negotiation", data: negotiationState });
+
+    if (negotiationState.accept === false) {
+        console.log("🔄 Proposition refusée. Préparation d'une nouvelle proposition...");
+
+        negotiationState.CDC.quantite += 20;
+        negotiationState.CDC.delai = "15 jours";
+        negotiationState.accept = null;
+        negotiationState.commentaire = "Nouvelle proposition après refus";
+
+        // Réenvoi d'une nouvelle proposition
+        setTimeout(async () => {
+            try {
+                await axios.post(`${TRANSPORTPATH}/proposition`, negotiationState);
+                console.log("📤 Nouvelle proposition envoyée après refus.");
+            } catch (err) {
+                console.error("❌ Erreur lors du renvoi :", err.message);
+            }
+        }, 1000);
+    } else {
+        console.log("✅ Proposition acceptée. Fin de la négociation.");
+    }
+
+    res.json({ message: "Réponse traitée", state: negotiationState });
+});
+
