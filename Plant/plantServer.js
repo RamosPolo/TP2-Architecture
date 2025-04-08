@@ -4,28 +4,12 @@ const PORT = process.env.PORT || 3003;
 const PORT_LOGISTIC = 3001;
 const cors = require("cors");
 const axios = require("axios");
-const mongoose = require("mongoose");
 
-// Connexion à MongoDB
-mongoose.connect('mongodb://localhost:27017/propositions', { useNewUrlParser: true, useUnifiedTopology: true })
-    .then(() => console.log("Connecté à MongoDB"))
-    .catch((err) => console.error("Erreur de connexion à MongoDB:", err));
-
-// Modèle de proposition
-const propositionSchema = new mongoose.Schema({
-    CDC: { type: mongoose.Schema.Types.Mixed, required: true },
-    accept: { type: Boolean, default: null },
-    commentaire: { type: String, default: "" },
-    status: { type: String, default: "En attente" }
-});
-
-
-const Proposition = mongoose.model("Proposition", propositionSchema);
 
 // Middleware
 app.use(cors());
 app.use(express.json());
-app.use(express.static("public"));
+
 
 // États de production et négociation
 let productionState = { status: "En attente", quantity: 0 };
@@ -36,67 +20,95 @@ app.get("/production", (req, res) => {
 });
 
 // Route pour recevoir une nouvelle proposition de l'API externe et la sauvegarder
-app.post("/proposition", async (req, res) => {
-    const { CDC, accept, commentaire, status } = req.body;
+const { v4: uuidv4 } = require("uuid");
 
-    if (!CDC) {
-        return res.status(400).json({ error: "Cahier des charges requis" });
+app.post("/proposition", (req, res) => {
+  const { CDC } = req.body;
+
+  if (!CDC) {
+    return res.status(400).json({ error: "Cahier des charges requis" });
+  }
+
+  // Génère un ID de commande unique
+  const orderId = uuidv4();
+
+  const cloneCDC = (cdc) => JSON.parse(JSON.stringify(cdc));
+
+  const generateProposition = (entreprise) => {
+    const accept = Math.random() > 0.5;
+    const proposalId = uuidv4(); // ID unique pour la proposition
+
+    if (accept) {
+      const originalBudget = parseFloat(CDC.budget);
+      const randomFactor = 1 + (Math.random() * 0.4 - 0.2); // entre -20% et +20%
+      const newBudget = (originalBudget * randomFactor).toFixed(2);
+
+      return {
+        orderId,
+        proposalId,
+        entreprise,
+        CDC: {
+          ...CDC,
+          budget: newBudget
+        },
+        accept: true,
+        commentaire: "Proposition acceptée avec ajustement du budget",
+        status: "Accepté"
+      };
+    } else {
+      return {
+        orderId,
+        proposalId,
+        entreprise,
+        CDC: cloneCDC(CDC),
+        accept: false,
+        commentaire: "Conditions non satisfaites",
+        status: "Refusé"
+      };
     }
+  };
 
-    const proposition = new Proposition({ CDC, accept: null, commentaire: "", status: "En attente" });
+  const entreprises = [
+    "Entreprise Alpha",
+    "Entreprise Beta",
+    "Entreprise Gamma",
+    "Entreprise Delta",
+    "Entreprise Epsilon",
+    "Entreprise Zeta",
+    "Entreprise Theta",
+    "Entreprise Iota",
+    "Entreprise Kappa",
+    "Entreprise Lambda"
+  ];
 
-    try {
-        await proposition.save();
-        console.log("Nouvelle proposition reçue :", proposition);
-        res.json({ message: "Proposition reçue", proposition });
-    } catch (err) {
-        console.error("Erreur lors de la sauvegarde de la proposition :", err.message);
-        res.status(500).json({ error: "Impossible de sauvegarder la proposition" });
-    }
+  const propositions = entreprises.map(generateProposition);
+
+  console.log("📦 Propositions générées :", propositions);
+  res.json({ message: "Propositions générées", orderId, propositions });
 });
 
-// Route pour répondre à une négociation
-app.post("/negociation", async (req, res) => {
-    const { accept, commentaire } = req.body;
+// Route pour négociater une proposition
+app.post("/negociate", (req, res) => {
+    let { newBudget } = req.body;
 
-    if (accept === undefined || commentaire === undefined) {
-        return res.status(400).json({ error: "Acceptation et commentaire requis" });
+    if (!newBudget) {
+        return res.status(400).json({ error: " budget requis" });
     }
 
-    try {
-        // Récupérer la dernière proposition
-        let negotiationState = await Proposition.findOne({ status: "En attente" });
+    // Chance de succès de la négociation
+    const successChance = Math.random();
+    const success = successChance > 0.2; // 80% de chance de succès
 
-        if (!negotiationState) {
-            return res.status(404).json({ error: "Aucune proposition en attente" });
-        }
-
-        negotiationState.accept = accept;
-        negotiationState.commentaire = commentaire;
-        negotiationState.status = accept ? "Accepté" : "Refusé";
-
-        await negotiationState.save();
-        console.log(`Négociation ${accept ? "acceptée" : "refusée"} :`, negotiationState);
-
-        // Informer l'API externe (ex: service logistique)
-        await axios.post(`http://localhost:${PORT_LOGISTIC}/update-plant`, { negotiationState });
-        res.json({ message: "Réponse envoyée à la logistique", negotiationState });
-    } catch (err) {
-        console.error("Erreur lors de la mise à jour de la négociation:", err.message);
-        res.status(500).json({ error: "Impossible de mettre à jour la négociation" });
+    // Nouveau budget
+    if(success){
+        // entre -20% et +20%
+        let randomFactor = 1 + (Math.random() * 0.4 - 0.2); 
+        newBudget = (newBudget * randomFactor).toFixed(2);  // Maintenant la réassignation fonctionne
     }
+
+    res.json({ res: newBudget });
 });
 
-// Route pour récupérer toutes les propositions
-app.get("/propositions", async (req, res) => {
-    try {
-        const propositions = await Proposition.find();
-        res.json({ propositions });
-    } catch (err) {
-        console.error("Erreur lors de la récupération des propositions :", err.message);
-        res.status(500).json({ error: "Impossible de récupérer les propositions" });
-    }
-});
 
 // Démarrer le serveur
 app.listen(PORT, () => {

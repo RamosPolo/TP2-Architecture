@@ -198,6 +198,8 @@ app.post("/start-negotiation", async (req, res) => {
         const response = await axios.post(PLANTPATH + "/proposition", req.body);
         const propositions = response.data.propositions;
 
+        console.log("✅ Propositions reçues :", propositions);
+
         const acceptedPropositions = propositions.filter(p => p.accept === true);
 
         for (const prop of acceptedPropositions) {
