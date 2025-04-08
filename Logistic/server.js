@@ -36,7 +36,6 @@ const exchangeSchema = new mongoose.Schema({
 });
 
 const Exchange = mongoose.model('Exchange', exchangeSchema);
-const ExhangeTransport = mongoose.model('ExchangeTransport', exchangeSchema);
 
 // Serveur HTTP Express pour servir index.html
 app.use(express.static(path.join(__dirname, 'public')));
@@ -57,24 +56,109 @@ console.log(`WebSocket server listening on ws://localhost:${wsPort}`);
 server.on("connection", (ws) => {
     clientsCon.push(ws);
 
-    ws.on("message", (message) => {
-        const data = JSON.parse(message);
+    ws.on("message", async (message) => {
+        const data = JSON.parse(message);  // On parse le message une seule fois
+        console.log("Message type reçu:", data);  // Affiche l'objet au lieu du message brut
 
-        const exchange = new Exchange({
-            type: data.type,
-            data: data.data
-        });
+        switch (data.type) {  // Utilise data.type au lieu de message.type
+            case "order":
+                console.log("📦 Commande reçue :", data.data);
+                const exchange = new Exchange({
+                    type: data.type,
+                    data: data.data
+                });
 
-        exchange.save()
-            .then(() => console.log('Échange sauvegardé dans MongoDB'))
-            .catch((err) => console.log('Erreur lors de la sauvegarde:', err));
+                exchange.save()
+                    .then(() => console.log('Échange sauvegardé dans MongoDB'))
+                    .catch((err) => console.log('Erreur lors de la sauvegarde:', err));
+                break;
 
-        if (data.type === "order") {
-            console.log("Nouvelle commande reçue", data.data);
+            // 🔴 Refus d'une proposition → supprimer la proposition
+            case "refuse":
+                try {
+                    await Exchange.deleteOne({ "data.proposalId": data.data.proposalId });
+                    console.log(`❌ Proposition refusée supprimée : ${data.data.proposalId}`);
+                } catch (err) {
+                    console.error("Erreur lors de la suppression de la proposition :", err);
+                }
+                break;
 
-        } else if (data.type === "accept") {
-            console.log(`Commande acceptée pour ${data.data.company} au prix de ${data.data.price}€`);
-            ws.send(JSON.stringify({ type: "confirmation", data: data.data }));
+            // ✅ Acceptation → supprimer toutes les autres propositions du même orderId
+            case "accept":
+                try {
+                    const { orderId, proposalId } = data.data;
+
+                    // Supprimer toutes les autres propositions liées à cette commande
+                    await Exchange.deleteMany({
+                        "data.orderId": orderId,
+                        "data.proposalId": { $ne: proposalId }
+                    });
+
+                    // Mettre à jour la proposition acceptée
+                    await Exchange.updateOne(
+                        { "data.proposalId": proposalId },
+                        { $set: { "type": "valided" } }
+                    );
+
+                    // Notifier les clients de l'acceptation
+                    notifyClients(clientsCon, [data.data], "valided");
+
+                    console.log(`✅ Proposition acceptée. Autres propositions supprimées pour la commande ${orderId}`);
+                } catch (err) {
+                    console.error("Erreur lors de l'acceptation de l'offre :", err);
+                }
+                break;
+
+            // 🔄 Négociation → mise à jour du prix (budget)
+            case "negociate":
+                try {
+                    const { proposalId, newPrice } = data.data;
+
+                    //lancer la négociation
+                    let newBudget = await startNegotiation(newPrice);
+
+                    console.log("proposalID : ", proposalId)
+                    console.log("le ancien budget trouvé est : ", newPrice)
+
+                    console.log("le new budget trouvé est : ", newBudget)
+
+                    if (newBudget != newPrice) {
+
+                        const result = await Exchange.updateOne(
+                            { "data.proposalId": proposalId },
+                            { $set: { "data.CDC.budget": newBudget } }
+                        );
+
+                        if (result.modifiedCount > 0) {
+                            console.log(`🔄 Négociation réussie, nouveau prix : ${newBudget}`);
+                        } else {
+                            console.log("❌ Aucune proposition trouvée à mettre à jour.");
+                        }
+
+                        // Recupère la proposition mise à jour
+                        const updatedExchange = await Exchange.findOne({ "data.proposalId": proposalId });
+
+                        if (updatedExchange) {
+                            notifyClients(clientsCon, [updatedExchange.data], "negociate");
+                        } else {
+                            console.warn("⚠️ Aucun échange mis à jour trouvé pour le proposalId :", proposalId);
+                        }
+
+                    } else {
+                        // On supprime la proposition si la négociation échoue
+                        await Exchange.deleteOne({ "data.proposalId": proposalId });
+                        console.log("❌ Négociation échouée");
+                    }
+
+
+                    console.log(`🔄 Proposition mise à jour avec nouveau prix : ${newPrice}`);
+                } catch (err) {
+                    console.error("Erreur lors de la négociation :", err);
+                }
+                break;
+
+            default:
+                console.warn("🟡 Type de message WebSocket non reconnu :", data.type);
         }
     });
 
@@ -98,164 +182,96 @@ app.use(express.json());
 app.get('/exchanges', async (req, res) => {
     try {
         const exchanges = await Exchange.find().sort({ timestamp: -1 }).limit(10);
-        console.log("🔍 Données récupérées depuis MongoDB :", exchanges);
+        // console.log("✅ Échanges récupérés :", exchanges);
         res.json(exchanges);
     } catch (err) {
         res.status(500).send('Erreur lors de la récupération des échanges');
     }
 });
-
 app.post("/start-negotiation", async (req, res) => {
     console.log("📤 Envoi de la première proposition...");
 
     try {
-        // Supprimer les commandes et propositions précédentes
         await Exchange.deleteMany({ type: { $in: ["order", "proposal"] } });
         console.log("🗑️ Anciennes commandes et propositions supprimées avant l'envoi");
 
-        const response = await axios.post(PLANTPATH + "/proposition", req.body); // Envoi de la proposition
-        console.log("✅ Proposition envoyée :", response.data);
+        const response = await axios.post(PLANTPATH + "/proposition", req.body);
+        const propositions = response.data.propositions;
 
-        // Sauvegarde de la négociation initiale dans MongoDB
-        const proposalExchange = new Exchange({
-            type: "proposal",
-            data: req.body
-        });
+        const acceptedPropositions = propositions.filter(p => p.accept === true);
 
-        await proposalExchange.save();
-        console.log("💾 Proposition initiale sauvegardée dans MongoDB");
+        for (const prop of acceptedPropositions) {
+            const acceptedExchange = new Exchange({
+                type: "proposal",
+                data: prop
+            });
 
-        res.json({ message: "Proposition initiale envoyée et enregistrée", state: req.body });
-    } catch (error) {
-        console.error("❌ Erreur lors de l'envoi :", error.message);
-        res.status(500).json({ error: error.message });
-    }
-});
-
-
-
-// Route pour recevoir les réponses de l'application
-app.post("/update-plant", async (req, res) => {
-    console.log("📩 Réponse reçue de l'application :", req.body);
-    let negotiationState = req.body.negotiationState;
-
-    try {
-        // Sauvegarde de la négociation dans MongoDB
-        const negotiationExchange = new Exchange({
-            type: "negotiation",
-            data: negotiationState
-        });
-
-        await negotiationExchange.save();
-        console.log("✅ Négociation sauvegardée dans MongoDB");
-
-        if (negotiationState.accept === false) {
-            console.log("🔄 Refus détecté, modification de la proposition...");
-
-            // Modifier le cahier des charges (ex: augmentation de la quantité)
-            negotiationState.CDC.quantite += 20;
-            negotiationState.CDC.delai = "15 jours";
-            negotiationState.accept = null;
-            negotiationState.commentaire = "Nouvelle proposition après refus";
-
-            // Suppression des commandes et étapes associées après refus
-            await Exchange.deleteMany({ type: { $in: ["order", "proposal"] } });
-            console.log("🗑️ Commandes et propositions supprimées après refus");
-
-            clientsCon.forEach(client => {
-                if (client.readyState === WebSocket.OPEN) {
-                    client.send(JSON.stringify({
-                        type: "proposal",
-                        data: {
-                            company: "Logistics",
-                            price: negotiationState.CDC.budget,
-                            quantity: negotiationState.CDC.quantite,
-                            delai: negotiationState.CDC.delai,
-                            commentaire: negotiationState.commentaire
-                        }
-                    }));
-                } else {
-                    console.error("❌ Client non connecté, impossible d'envoyer la proposition");
-                }
-              });
-            
-            // Attendre quelques secondes avant d'envoyer la nouvelle proposition
-            // setTimeout(async () => {
-            //     console.log("📤 Envoi d'une nouvelle proposition après refus...");
-            //     try {
-            //         await axios.post(PLANTPATH + "/proposition", negotiationState);
-            //         console.log("✅ Nouvelle proposition envoyée !");
-            //     } catch (error) {
-            //         console.error("❌ Erreur lors de l'envoi de la nouvelle proposition :", error.message);
-            //     }
-            // }, 3000);
-        } else {
-            console.log("✅ Proposition acceptée, fin de la négociation.");
-
-            // Suppression des commandes et étapes associées après acceptation
-            await Exchange.deleteMany({ type: { $in: ["order", "proposal"] } });
-            console.log("🗑️ Commandes et propositions supprimées après acceptation");
+            await acceptedExchange.save();
         }
 
-        res.json({ message: "Réponse traitée et sauvegardée", state: negotiationState });
-    } catch (error) {
-        console.error("❌ Erreur lors du traitement de la négociation :", error.message);
-        res.status(500).json({ error: "Impossible de traiter la négociation" });
-    }
-});
+        // 🔔 Notifier les clients WebSocket
+        notifyClients(clientsCon, acceptedPropositions, "proposal");
 
+        console.log(`💾 ${acceptedPropositions.length} propositions acceptées sauvegardées.`);
 
-// ########################### TRANSPORTER ####################### //
-
-app.use(express.json());
-
-// Mémoire locale
-let logs = [];
-
-// Envoie d'une proposition initiale
-app.post("/start-negotiation-transporter", async (req, res) => {
-    console.log("📤 Envoi de la proposition initiale à Transporter...");
-
-    try {
-        const response = await axios.post(`${TRANSPORTPATH}/proposition`, req.body);
-        console.log("✅ Proposition envoyée :", response.data.proposition);
-
-        logs.push({ type: "proposition", data: req.body });
-
-        res.json({ message: "Proposition envoyée à Transporter", state: req.body });
+        res.json({
+            message: "Proposition envoyée",
+            accepted: acceptedPropositions
+        });
     } catch (error) {
         console.error("❌ Erreur lors de l'envoi :", error.message);
         res.status(500).json({ error: error.message });
     }
 });
 
-// Réception de la réponse de Transporter
-app.post("/update-transporter", (req, res) => {
-    const negotiationState = req.body.negotiationState;
-    console.log("📩 Réponse reçue de Transporter :", negotiationState);
 
-    logs.push({ type: "negotiation", data: negotiationState });
-
-    if (negotiationState.accept === false) {
-        console.log("🔄 Proposition refusée. Préparation d'une nouvelle proposition...");
-
-        negotiationState.CDC.quantite += 20;
-        negotiationState.CDC.delai = "15 jours";
-        negotiationState.accept = null;
-        negotiationState.commentaire = "Nouvelle proposition après refus";
-
-        // Réenvoi d'une nouvelle proposition
-        setTimeout(async () => {
-            try {
-                await axios.post(`${TRANSPORTPATH}/proposition`, negotiationState);
-                console.log("📤 Nouvelle proposition envoyée après refus.");
-            } catch (err) {
-                console.error("❌ Erreur lors du renvoi :", err.message);
-            }
-        }, 1000);
-    } else {
-        console.log("✅ Proposition acceptée. Fin de la négociation.");
+// Fonction pour lancer une négociation
+async function startNegotiation(newBudget) {
+    console.log("🔄 Lancement de la négociation...");
+    try {
+        const response = await axios.post(PLANTPATH + "/negociate", {
+            newBudget: newBudget
+        });
+        console.log("✅ Négociation lancée :", response.data);
+        return response.data.res;
+    } catch (error) {
+        console.error("❌ Erreur lors du lancement de la négociation :", error.message);
+        throw error;
     }
+}
 
-    res.json({ message: "Réponse traitée", state: negotiationState });
-});
+// Fonction pour vider la base de données
+async function clearDatabase() {
+    try {
+        await Exchange.deleteMany({});
+        console.log("🗑️ Base de données vidée avec succès");
+    } catch (error) {
+        console.error("❌ Erreur lors de la suppression de la base de données :", error.message);
+    }
+}
+
+
+
+// Fonction pour notifier les clients WebSocket
+function notifyClients(clientsCon, propositions, type) {
+    propositions.forEach(prop => {
+        const message = {
+            type: type,
+            data: {
+                orderId: prop.orderId,
+                proposalId: prop.proposalId,
+                entreprise: prop.entreprise,
+                CDC: prop.CDC,
+                commentaire: prop.commentaire,
+            }
+        };
+
+        clientsCon.forEach(client => {
+            if (client.readyState === WebSocket.OPEN) {
+                client.send(JSON.stringify(message));
+            } else {
+                console.error("❌ Client non connecté, impossible d'envoyer la proposition");
+            }
+        });
+    });
+}

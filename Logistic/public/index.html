@@ -43,34 +43,6 @@
             console.log("Connexion WebSocket établie !");
         };
 
-        socket.onmessage = event => {
-            console.log("Message reçu:", event.data);
-            const message = JSON.parse(event.data);
-
-            if (message.type === "order") {
-                console.log("Nouvelle commande reçue", message.data);
-                const orderList = document.getElementById("orderList");
-                const li = document.createElement("li");
-                li.textContent = `Produit: ${message.data.product}, Quantité: ${message.data.quantity}, Budget: ${message.data.budget}€`;
-                orderList.appendChild(li);
-            }
-
-            if (message.type === "proposal") {
-                console.log("proposal" + message.data);
-                const proposalsList = document.getElementById("proposalsList");
-                const li = document.createElement("li");
-                li.textContent = `Entreprise: ${message.data.company}, Prix: ${message.data.price}€`;
-                proposalsList.appendChild(li);
-            }
-
-            if (message.type === "accept") {
-                console.log("accpeter")
-                const acceptedOffer = document.getElementById("acceptedOffer");
-                acceptedOffer.textContent = `Devis accepté : ${message.data.company} pour ${message.data.price}€`;
-            } else {
-                console.log("pas trouvé le type" + message.type)
-            }
-        };
 
         // Fonction pour récupérer les derniers échanges depuis MongoDB
         async function fetchExchanges() {
@@ -94,27 +66,34 @@
                         li.appendChild(button);
                         button.onclick = () => {
                             sendToSupplier(exchange.data);
+                            li.remove();
                         };
-                        button.textContent = "Envoyer au fournisseur";
+                        button.textContent = "Envoyer aux fournisseurs";
                         orderList.appendChild(li);
                     }else if(exchange.type === "proposal") {
 
                         let dataPro = exchange.data.CDC;
                         console.log("dataPro" + dataPro);
                         const li = document.createElement("li");
-                        li.textContent = `🏢 Entreprise A: 📦 Produit: ${dataPro.product}, ⏳ Délai: ${dataPro.delai}, 💰 Prix: ${dataPro.budget}€`;
+                        li.textContent = `🏢 ${exchange.data.entreprise}: 📦 Produit: ${dataPro.product}, ⏳ Délai: ${dataPro.delai}, 💰 Prix: ${dataPro.budget}€`;
                         proposalsList.appendChild(li);
-                    }else if(exchange.type == "negotiation") {
+
+                    }else if(exchange.type == "negociate") {
+                        
+                        let dataPro = exchange.data.CDC;
+                        console.log("dataPro" + exchange.data.CDC);
+                        const li = document.createElement("li");
+                        li.textContent = `🏢 ${exchange.data.entreprise}: 📦 Produit: ${dataPro.product}, ⏳ Délai: ${dataPro.delai}, 💰 Prix: ${dataPro.budget}€`;
+                    
+                    } else if (exchange.type == "valided"){
                         let dataPro = exchange.data.CDC;
                         const li = document.createElement("li");
-                        li.textContent = `🏢 Entreprise A: 📦 Produit: ${dataPro.product}, ⏳ Délai: ${dataPro.delai}, 💰 Prix: ${dataPro.budget}€`;
-                            
-                        if(exchange.data.status == "Refusé"){
-                            negotiationList.appendChild(li);
-                        } else {
-                            acceptedOfferList.appendChild(li);
-                        }
+                        li.textContent = `🏢 ${exchange.data.entreprise}: 📦 Produit: ${dataPro.product}, ⏳ Délai: ${dataPro.delai}, 💰 Prix: ${dataPro.budget}€`;
+                        acceptedOfferList.appendChild(li);
+                    } else {
+                        console.log("Type d'échange inconnu:", exchange.type);
                     }
+
                 });
             } catch (error) {
                 console.error('Erreur lors de la récupération des échanges:', error);
@@ -122,6 +101,8 @@
         }
 
         function sendToSupplier(order) {
+            console.log("Envoi de la commande au fournisseur:", order);
+
             let negotiationState = {
                 CDC: { product: order.product, quantity: order.quantity, delai: "5 jours", budget: order.budget }, // Détails de la commande
                 accept: null, 
@@ -138,10 +119,10 @@
             .then(response => response.json())
             .then(data => {
                 console.log("Négociation commencée:", data);
-                const proposalsList = document.getElementById("proposalsList");
-                const li = document.createElement("li");
-                li.textContent = `Devis en cours: Produit ${order.product}, Quantité ${order.quantity}`;
-                proposalsList.appendChild(li);
+                // Raffraîchir la liste des échanges après l'envoi
+                fetchExchanges();
+
+
             })
             .catch(error => console.error("Erreur d'envoi au fournisseur:", error));
         }
