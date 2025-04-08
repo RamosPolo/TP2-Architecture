@@ -66,8 +66,9 @@
                         li.appendChild(button);
                         button.onclick = () => {
                             sendToSupplier(exchange.data);
+                            li.remove();
                         };
-                        button.textContent = "Envoyer au fournisseur";
+                        button.textContent = "Envoyer aux fournisseurs";
                         orderList.appendChild(li);
                     }else if(exchange.type === "proposal") {
 
@@ -118,10 +119,10 @@
             .then(response => response.json())
             .then(data => {
                 console.log("Négociation commencée:", data);
-                const proposalsList = document.getElementById("proposalsList");
-                const li = document.createElement("li");
-                li.textContent = `Devis en cours: Produit ${order.product}, Quantité ${order.quantity}`;
-                proposalsList.appendChild(li);
+                // Raffraîchir la liste des échanges après l'envoi
+                fetchExchanges();
+
+
             })
             .catch(error => console.error("Erreur d'envoi au fournisseur:", error));
         }

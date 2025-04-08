@@ -128,9 +128,12 @@ server.on("connection", (ws) => {
                         // Recupère la proposition mise à jour
                         const updatedExchange = await Exchange.findOne({ "data.proposalId": proposalId });
 
-                        console.log("Proposition mise à jour :", updatedExchange);
-                        // Notifier les clients de la mise à jour
-                        notifyClients(clientsCon, [updatedExchange.data], "negociate");
+                        if (updatedExchange) {
+                            notifyClients(clientsCon, [updatedExchange.data], "negociate");
+                        } else {
+                            console.warn("⚠️ Aucun échange mis à jour trouvé pour le proposalId :", proposalId);
+                        }
+
                     } else {
                         // On supprime la proposition si la négociation échoue
                         await Exchange.deleteOne({ "data.proposalId": proposalId });
